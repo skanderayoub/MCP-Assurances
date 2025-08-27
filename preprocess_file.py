@@ -73,21 +73,17 @@ class HierarchyParser:
     def detect_hierarchy(self, preceding_text, prev_hierarchy):
         curr_hierarchy = prev_hierarchy.copy()
         for idx, pattern in enumerate(reversed(self.patterns)):
-            matches = re.findall(pattern, preceding_text, flags=re.MULTILINE)
             splt = re.split(pattern, preceding_text, flags=re.M)
-            # if matches:
-            #     new_val = re.sub(r"\n", " ", matches[-1].strip())                
-            #     print(matches)
-            #     print(splt)
-            #     print("-"*50)
             if len(splt) > 1:
-                new_val = f"{splt[-2].strip()} {splt[-1].strip()}"
+                new_val = f"{splt[-2].strip()} {splt[-1].strip()}".strip()
                 preceding_text = "".join(s for s in splt[:-2])
-                print(new_val)
-                if curr_hierarchy[self.level_keys[len(self.level_keys) - idx - 1]] != new_val:
-                    curr_hierarchy[self.level_keys[len(self.level_keys) - idx - 1]] = new_val
-                    for lower_idx in range(idx + 1, len(self.level_keys)):
-                        curr_hierarchy[self.level_keys[lower_idx]] = ""
+                # print(new_val)
+                curr_idx = len(self.level_keys) - idx - 1
+                if curr_hierarchy[self.level_keys[curr_idx]] != new_val:
+                    curr_hierarchy[self.level_keys[curr_idx]] = new_val
+                    for lower_idx in range(curr_idx + 1, len(self.level_keys)):
+                        if (curr_hierarchy[self.level_keys[lower_idx]]) == prev_hierarchy[self.level_keys[lower_idx]]:
+                            curr_hierarchy[self.level_keys[lower_idx]] = ""
         return curr_hierarchy
 
 class ArticleProcessor:
@@ -132,6 +128,7 @@ class ArticleProcessor:
         response = self.llm.complete(prompt)
         summary = str(response).strip()
         return summary
+        
 
     def process_article(self, article_id, content, curr_hierarchy, reference_graph, all_articles):
         content = re.sub(r"\n", " ", content.strip())
@@ -144,10 +141,28 @@ class ArticleProcessor:
         references = re.findall(r"[A-Z]\.\s*\d{3}-\d+(?:-\d+)?", content)
         for ref in references:
             reference_graph["Article " + re.sub(". ", "", ref)].append(article_id)
+            
+        patterns = [
+            r'Partie législative',
+            r'Partie réglementaire - Arrêtés',
+            r'Partie réglementaire',
+            r'Livre [IVXLCDM]+',
+            r'Titre [IVXLCDM]+',
+            r'Chapitre [IVXLCDM]+',
+            r'Section (?:[IVXLCDM]+|[0-9]+)+',
+            r'Sous-section\s+(?:[IVXLCDM]+|[0-9]+)'
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, content)
+            if match:
+                # Cut everything from this match onward
+                content = content[:match.start()]
+                break  # Stop after the first match
 
         article = {
             "article_id": article_id,
-            "content": content,
+            "content": content.strip(),
             "hierarchy": curr_hierarchy.copy(),
             "references": ["Article " + re.sub(". ", "", r) for r in references],
             "referenced_by": [],
